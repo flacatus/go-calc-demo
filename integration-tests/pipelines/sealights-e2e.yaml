@@ -1,0 +1,260 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: provision-cluster
+spec:
+  description: |
+    An integration test which provisions an ephemeral Hypershift cluster.
+  params:
+    - description: Snapshot of the application
+      name: SNAPSHOT
+      default: '{"components": [{"name":"test-app", "containerImage": "quay.io/example/repo:latest"}]}'
+      type: string
+    - name: oci-container-repo
+      default: 'quay.io/konflux-test-storage/quality-camp/k8s-demo'
+      description: The ORAS container used to store all test artifacts.
+  tasks:
+    - name: test-metadata
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/flacatus/tekton-integration-catalog.git
+          - name: revision
+            value: k_comp
+          - name: pathInRepo
+            value: common/tasks/test-metadata/0.1/test-metadata.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+        - name: test-name
+          value: $(context.pipelineRun.name)
+    - name: build-sealights-binaries
+      runAfter:
+        - test-metadata
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/flacatus/tekton-integration-catalog.git
+          - name: revision
+            value: sealights_build
+          - name: pathInRepo
+            value: tasks/sealights/build-sealights-container/0.1/build-sealights-container.yaml
+      params:
+        - name: git-url
+          value: $(tasks.test-metadata.results.source-repo-url)
+        - name: git-branch
+          value: $(tasks.test-metadata.results.source-repo-branch)
+        - name: git-revision
+          value: $(tasks.test-metadata.results.git-revision)
+        - name: konflux-component
+          value: $(tasks.test-metadata.results.component-name)
+        - name: DOCKERFILE
+          value: ./Dockerfile.sealights
+        - name: IMAGE
+          value: $(tasks.test-metadata.results.container-image)
+    - name: provision-eaas-space
+      runAfter:
+        - build-sealights-binaries
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/build-definitions.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: task/eaas-provision-space/0.1/eaas-provision-space.yaml
+      params:
+        - name: ownerName
+          value: $(context.pipelineRun.name)
+        - name: ownerUid
+          value: $(context.pipelineRun.uid)
+    - name: provision-cluster
+      runAfter:
+        - provision-eaas-space
+      taskSpec:
+        results:
+          - name: clusterName
+            value: "$(steps.create-cluster.results.clusterName)"
+        volumes:
+          - name: credentials
+            emptyDir: {}
+        steps:
+          - name: get-supported-versions
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/konflux-ci/build-definitions.git
+                - name: revision
+                  value: main
+                - name: pathInRepo
+                  value: stepactions/eaas-get-supported-ephemeral-cluster-versions/0.1/eaas-get-supported-ephemeral-cluster-versions.yaml
+            params:
+              - name: eaasSpaceSecretRef
+                value: $(tasks.provision-eaas-space.results.secretRef)
+          - name: pick-version
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/konflux-ci/build-definitions.git
+                - name: revision
+                  value: main
+                - name: pathInRepo
+                  value: stepactions/eaas-get-latest-openshift-version-by-prefix/0.1/eaas-get-latest-openshift-version-by-prefix.yaml
+            params:
+              - name: prefix
+                value: "4.15"
+          - name: create-cluster
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/konflux-ci/build-definitions.git
+                - name: revision
+                  value: main
+                - name: pathInRepo
+                  value: stepactions/eaas-create-ephemeral-cluster-hypershift-aws/0.1/eaas-create-ephemeral-cluster-hypershift-aws.yaml
+            params:
+              - name: eaasSpaceSecretRef
+                value: $(tasks.provision-eaas-space.results.secretRef)
+              - name: instanceType
+                value: m5.2xlarge
+              - name: version
+                value: "$(steps.pick-version.results.version)"
+    - name: konflux-e2e
+      runAfter:
+        - provision-cluster
+      taskSpec:
+        volumes:
+          - name: credentials
+            emptyDir: {}
+          - name: konflux-test-infra-volume
+            secret:
+              secretName: konflux-test-infra
+        steps:
+          - name: get-kubeconfig
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/konflux-ci/build-definitions.git
+                - name: revision
+                  value: main
+                - name: pathInRepo
+                  value: stepactions/eaas-get-ephemeral-cluster-credentials/0.1/eaas-get-ephemeral-cluster-credentials.yaml
+            params:
+              - name: eaasSpaceSecretRef
+                value: $(tasks.provision-eaas-space.results.secretRef)
+              - name: clusterName
+                value: "$(tasks.provision-cluster.results.clusterName)"
+              - name: credentials
+                value: credentials
+          - name: e2e-test
+            image: quay.io/flacatus/go-test-tools:latest
+            volumeMounts:
+              - name: konflux-test-infra-volume
+                mountPath: /usr/local/konflux-test-infra
+              - name: credentials
+                mountPath: /credentials
+            workingDir: /workspace
+            env:
+              - name: JOB_SPEC
+                value: $(tasks.test-metadata.results.job-spec)
+              - name: IMAGE
+                value: $(tasks.build-sealights-binaries.results.output-image)
+              - name: KUBECONFIG
+                value: "/credentials/$(steps.get-kubeconfig.results.kubeconfig)"
+            script: |
+              #!/bin/bash
+              set -e
+              # Variables
+              NAMESPACE="sealights-demo"
+              DEPLOYMENT_NAME="sealights-go-demo"
+              PORT=8080
+
+              # Ensure the namespace exists
+              echo "INFO: Ensuring namespace $NAMESPACE exists..."
+              oc get namespace "$NAMESPACE" >/dev/null 2>&1 || oc create namespace "$NAMESPACE"
+
+              # Create Deployment
+              echo "INFO: Creating deployment..."
+              oc apply -f - <<EOF
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: $DEPLOYMENT_NAME
+                namespace: $NAMESPACE
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: $DEPLOYMENT_NAME
+                template:
+                  metadata:
+                    labels:
+                      app: $DEPLOYMENT_NAME
+                  spec:
+                    containers:
+                    - name: $DEPLOYMENT_NAME
+                      image: $IMAGE
+                      ports:
+                      - containerPort: $PORT
+              EOF
+
+              # Check if Deployment was created
+              echo "INFO: Verifying deployment status..."
+              # Set the timeout in seconds (2 minutes = 120 seconds)
+              TIMEOUT=120
+
+              # Check if Deployment was created and fetch pod logs if failed with timeout
+              echo "INFO: Verifying deployment status..."
+              timeout $TIMEOUT oc rollout status deployment/$DEPLOYMENT_NAME -n $NAMESPACE || { 
+                echo "ERROR: Deployment failed or timed out after $TIMEOUT seconds!"; 
+                POD_NAME=$(oc get pods -n $NAMESPACE -l app=$DEPLOYMENT_NAME -o jsonpath='{.items[0].metadata.name}'); 
+                echo "INFO: Fetching logs for pod $POD_NAME...";
+                oc logs -n $NAMESPACE $POD_NAME || echo "ERROR: Failed to fetch pod logs."; 
+                exit 1; 
+              }
+
+              # Create a Service
+              echo "INFO: Creating service..."
+              oc expose deployment "$DEPLOYMENT_NAME" \
+                --port="$PORT" \
+                --target-port="$PORT" \
+                --name="$DEPLOYMENT_NAME" \
+                -n "$NAMESPACE" || { echo "ERROR: Service creation failed!"; exit 1; }
+
+              # Create Route
+              echo "INFO: Creating route..."
+              oc create route edge --service="$DEPLOYMENT_NAME" --insecure-policy=Redirect -n "$NAMESPACE" || { echo "ERROR: Route creation failed!"; exit 1; }
+
+              # Fetch Route URL
+              echo "INFO: Fetching route URL..."
+
+              # Check the Pod logs if deployment fails
+              POD_NAME=$(oc get pods -n $NAMESPACE -l app=$DEPLOYMENT_NAME -o jsonpath='{.items[0].metadata.name}')
+              echo "INFO: Fetching logs for pod $POD_NAME..."
+              oc logs -n $NAMESPACE $POD_NAME || echo "ERROR: Failed to fetch pod logs."
+
+              # Run tests
+
+              GIT_URL="${GIT_URL:-$(echo "$JOB_SPEC" | jq -r '.git.source_repo_url')}"
+              GIT_REVISION="${GIT_REVISION:-$(echo "$JOB_SPEC" | jq -r '.git.commit_sha')}"
+
+              echo -e "INFO: Cloning repository '$GIT_REPO' with revision '$GIT_REVISION' from URL '$GIT_URL'"
+              cd $(mktemp -d)
+              git clone "${GIT_URL}" .
+              git checkout "${GIT_REVISION}"
+
+              go install github.com/onsi/ginkgo/v2/ginkgo@latest
+              
+              export CONTAINER_ROUTE_URL="https://$(oc get route "$DEPLOYMENT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.host}')"
+              echo "Application is accessible at: $CONTAINER_ROUTE_URL"
+              cd tests/e2e && ginkgo --json-report=report.json
+
+              # Display the test report
+              cat report.json

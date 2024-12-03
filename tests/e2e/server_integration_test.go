@@ -1,9 +1,11 @@
 package e2e
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/onsi/ginkgo/v2"
@@ -12,7 +14,18 @@ import (
 
 var _ = ginkgo.Describe("E2E Server Tests", func() {
 	ginkgo.It("should return 5 when 2 and 3 are added", func() {
-		resp, err := http.Get("http://localhost:8080/add?a=2&b=3")
+		// Create an HTTP client that skips TLS verification
+		client := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+		}
+
+		// Get the route URL from the environment
+		routeURL := os.Getenv("CONTAINER_ROUTE_URL")
+		resp, err := client.Get(routeURL + "/add?a=2&b=3")
 		gomega.Expect(err).ToNot(gomega.HaveOccurred())
 		defer resp.Body.Close()
 
@@ -25,6 +38,7 @@ var _ = ginkgo.Describe("E2E Server Tests", func() {
 		fmt.Println("Expected:", expectedResponse)
 		fmt.Println("Actual:", actualResponse)
 
+		// Assert the response body and status code
 		gomega.Expect(actualResponse).To(gomega.Equal(expectedResponse))
 		gomega.Expect(resp.StatusCode).To(gomega.Equal(http.StatusOK))
 	})
