@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/liornabat-sealights/go-calc-demo/lib/types"
-	"github.com/liornabat-sealights/go-calc-demo/service/pkg/calc"
-	"net/http"
-	"time"
+	"github.com/liornabat-sealights/go-calc-demo/pkg/calc"
 )
 
 type Server struct {

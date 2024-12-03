@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
-	"github.com/liornabat-sealights/go-calc-demo/service/server"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/liornabat-sealights/go-calc-demo/pkg/server"
 )
 
 func setup(shutdown chan struct{}) {

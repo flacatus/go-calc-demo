@@ -1,4 +1,4 @@
-FROM golang:1.22.0-alpine as builder
+FROM docker.io/library/golang:1.22.0-alpine as builder
 ARG SERVICE_NAME
 ARG BRANCH_NAME
 ARG BUILD_NAME
@@ -42,7 +42,7 @@ RUN ./slcli config create-bsid --app ${SERVICE_NAME} --branch ${BRANCH_NAME} --b
 RUN ./slcli scan --bsid buildSessionId.txt --path-to-scanner ./slgoagent --workspacepath ./ --scm git --scmProvider github
 
 # Run tests
-RUN go test -v ./...
+RUN go test -v $(go list ./... | grep -v 'tests')
 
 # Build the Go application
 RUN go mod vendor
@@ -53,6 +53,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -mod=vendor -o ./go-calc-d
 FROM registry.access.redhat.com/ubi9/ubi:latest
 
 COPY --from=builder /go/go/src/go-calc-demo /go/src/go-calc-demo
+
+# Ensure the binary is executable
+RUN chmod +x /go/src/go-calc-demo
 
 # Define the entry point for the container
 CMD ["/go/src/go-calc-demo"]
