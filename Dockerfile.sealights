@@ -4,6 +4,7 @@ ARG BRANCH_NAME
 ARG BUILD_NAME
 ARG SEALIGHTS_TOKEN
 ENV OS_ARCH linux-amd64
+ENV SEALIGHTS_LOG_LEVEL debug
 
 # Echo build arguments for debugging
 RUN echo "SERVICE_NAME: ${SERVICE_NAME}"
