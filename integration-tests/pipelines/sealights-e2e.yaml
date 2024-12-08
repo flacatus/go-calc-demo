@@ -50,9 +50,9 @@ spec:
           value: $(tasks.test-metadata.results.git-revision)
         - name: konflux-component
           value: $(tasks.test-metadata.results.component-name)
-        - name: DOCKERFILE
+        - name: dockerfile
           value: ./Dockerfile.sealights
-        - name: IMAGE
+        - name: image
           value: $(tasks.test-metadata.results.container-image)
     - name: provision-eaas-space
       runAfter:
@@ -132,9 +132,9 @@ spec:
         volumes:
           - name: credentials
             emptyDir: {}
-          - name: konflux-test-infra-volume
+          - name: sealights-credentials
             secret:
-              secretName: konflux-test-infra
+              secretName: sealights-credentials
         steps:
           - name: get-kubeconfig
             ref:
@@ -156,10 +156,10 @@ spec:
           - name: e2e-test
             image: quay.io/flacatus/go-test-tools:latest
             volumeMounts:
-              - name: konflux-test-infra-volume
-                mountPath: /usr/local/konflux-test-infra
               - name: credentials
                 mountPath: /credentials
+              - name: sealights-credentials
+                mountPath: /usr/local/sealights-credentials
             workingDir: /workspace
             env:
               - name: JOB_SPEC
@@ -170,91 +170,39 @@ spec:
                 value: "/credentials/$(steps.get-kubeconfig.results.kubeconfig)"
             script: |
               #!/bin/bash
-              set -e
-              # Variables
-              NAMESPACE="sealights-demo"
-              DEPLOYMENT_NAME="sealights-go-demo"
-              PORT=8080
+              set -euo pipefail
+              oc get po -A
 
-              # Ensure the namespace exists
-              echo "INFO: Ensuring namespace $NAMESPACE exists..."
-              oc get namespace "$NAMESPACE" >/dev/null 2>&1 || oc create namespace "$NAMESPACE"
+              export SEALIGHTS_AGENT_TOKEN="$(cat /usr/local/sealights-credentials/token)"
 
-              # Create Deployment
-              echo "INFO: Creating deployment..."
-              oc apply -f - <<EOF
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: $DEPLOYMENT_NAME
-                namespace: $NAMESPACE
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: $DEPLOYMENT_NAME
-                template:
-                  metadata:
-                    labels:
-                      app: $DEPLOYMENT_NAME
-                  spec:
-                    containers:
-                    - name: $DEPLOYMENT_NAME
-                      image: $IMAGE
-                      ports:
-                      - containerPort: $PORT
-              EOF
-
-              # Check if Deployment was created
-              echo "INFO: Verifying deployment status..."
-              # Set the timeout in seconds (2 minutes = 120 seconds)
-              TIMEOUT=120
-
-              # Check if Deployment was created and fetch pod logs if failed with timeout
-              echo "INFO: Verifying deployment status..."
-              timeout $TIMEOUT oc rollout status deployment/$DEPLOYMENT_NAME -n $NAMESPACE || { 
-                echo "ERROR: Deployment failed or timed out after $TIMEOUT seconds!"; 
-                POD_NAME=$(oc get pods -n $NAMESPACE -l app=$DEPLOYMENT_NAME -o jsonpath='{.items[0].metadata.name}'); 
-                echo "INFO: Fetching logs for pod $POD_NAME...";
-                oc logs -n $NAMESPACE $POD_NAME || echo "ERROR: Failed to fetch pod logs."; 
-                exit 1; 
-              }
-
-              # Create a Service
-              echo "INFO: Creating service..."
-              oc expose deployment "$DEPLOYMENT_NAME" \
-                --port="$PORT" \
-                --target-port="$PORT" \
-                --name="$DEPLOYMENT_NAME" \
-                -n "$NAMESPACE" || { echo "ERROR: Service creation failed!"; exit 1; }
-
-              # Create Route
-              echo "INFO: Creating route..."
-              oc create route edge --service="$DEPLOYMENT_NAME" --insecure-policy=Redirect -n "$NAMESPACE" || { echo "ERROR: Route creation failed!"; exit 1; }
-
-              # Fetch Route URL
-              echo "INFO: Fetching route URL..."
-
-              # Check the Pod logs if deployment fails
-              POD_NAME=$(oc get pods -n $NAMESPACE -l app=$DEPLOYMENT_NAME -o jsonpath='{.items[0].metadata.name}')
-              echo "INFO: Fetching logs for pod $POD_NAME..."
-              oc logs -n $NAMESPACE $POD_NAME || echo "ERROR: Failed to fetch pod logs."
-
-              # Run tests
-
+              # Extract GIT_URL and GIT_REVISION from JOB_SPEC or use defaults
               GIT_URL="${GIT_URL:-$(echo "$JOB_SPEC" | jq -r '.git.source_repo_url')}"
               GIT_REVISION="${GIT_REVISION:-$(echo "$JOB_SPEC" | jq -r '.git.commit_sha')}"
 
-              echo -e "INFO: Cloning repository '$GIT_REPO' with revision '$GIT_REVISION' from URL '$GIT_URL'"
-              cd $(mktemp -d)
-              git clone "${GIT_URL}" .
-              git checkout "${GIT_REVISION}"
+              cd "$(mktemp -d)"
 
-              go install github.com/onsi/ginkgo/v2/ginkgo@latest
-              
-              export CONTAINER_ROUTE_URL="https://$(oc get route "$DEPLOYMENT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.host}')"
-              echo "Application is accessible at: $CONTAINER_ROUTE_URL"
-              cd tests/e2e && ginkgo --json-report=report.json
+              # Clone the repository and checkout the specified revision
+              if git clone "$GIT_URL" .; then
+                echo "INFO: Successfully cloned repository."
+              else
+                echo "ERROR: Failed to clone repository from '$GIT_URL'."
+                exit 1
+              fi
 
-              # Display the test report
-              cat report.json
+              if git checkout "$GIT_REVISION"; then
+                echo "INFO: Successfully checked out revision '$GIT_REVISION'."
+              else
+                echo "ERROR: Failed to check out revision '$GIT_REVISION'."
+                exit 1
+              fi
+
+              # Execute the upload script
+              UPLOAD_SCRIPT="${PWD}/upload_it.sh"
+              if [[ -x "$UPLOAD_SCRIPT" ]]; then
+                echo "INFO: Running upload script: '$UPLOAD_SCRIPT'"
+                /bin/bash "$UPLOAD_SCRIPT"
+                echo "INFO: Upload script completed successfully."
+              else
+                echo "ERROR: Upload script '$UPLOAD_SCRIPT' not found or not executable."
+                exit 1
+              fi
