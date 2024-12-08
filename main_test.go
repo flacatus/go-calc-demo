@@ -3,14 +3,15 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
-	"github.com/go-resty/resty/v2"
-	"github.com/liornabat-sealights/go-calc-demo/lib/types"
-	main2 "github.com/liornabat-sealights/go-calc-demo/service/pkg/calc"
-	"github.com/liornabat-sealights/go-calc-demo/service/server"
 	"os"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/go-resty/resty/v2"
+	"github.com/liornabat-sealights/go-calc-demo/lib/types"
+	main2 "github.com/liornabat-sealights/go-calc-demo/pkg/calc"
+	"github.com/liornabat-sealights/go-calc-demo/pkg/server"
 )
 
 var restyClient = resty.New().SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
