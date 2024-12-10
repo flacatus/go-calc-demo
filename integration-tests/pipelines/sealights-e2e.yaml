@@ -1,0 +1,141 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: sealights-instrumentation
+spec:
+  description: |
+    An integration test which provisions an ephemeral Hypershift cluster.
+  params:
+    - description: Snapshot of the application
+      name: SNAPSHOT
+      default: '{"components": [{"name":"test-app", "containerImage": "quay.io/example/repo:latest"}]}'
+      type: string
+  tasks:
+    - name: test-metadata
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/flacatus/tekton-integration-catalog.git
+          - name: revision
+            value: k_comp
+          - name: pathInRepo
+            value: common/tasks/test-metadata/0.1/test-metadata.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+        - name: test-name
+          value: $(context.pipelineRun.name)
+    - name: sealights-instrumentation
+      runAfter:
+        - test-metadata
+      taskSpec:
+        results:
+          - name: build-session-id
+            value: $(steps.sealights-instrumentation.results.build-session-id)
+          - name: build-name
+            value: $(steps.sealights-instrumentation.results.build-name)
+          - name: sealights-image
+            value: $(steps.get-sealights-container.results.sealights-image)
+          - name: SOURCE_ARTIFACT
+            description: The Trusted Artifact URI pointing to the artifact with
+              the application source code.
+            type: string
+        volumes:
+          - name: sourcecode
+            emptyDir: {}
+          - name: sealights-credentials
+            secret:
+              secretName: sealights-secret
+        steps:
+          - name: get-sealights-container
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/flacatus/tekton-integration-catalog
+                - name: revision
+                  value: sealights_build
+                - name: pathInRepo
+                  value: stepactions/sealights/sealights-container/0.1/sealights-container.yaml
+            params:
+              - name: image-url
+                value: $(tasks.test-metadata.results.container-image)
+              - name: revision
+                value: $(tasks.test-metadata.results.git-revision)
+          - name: git-clone
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/flacatus/tekton-integration-catalog
+                - name: revision
+                  value: sealights_build
+                - name: pathInRepo
+                  value: stepactions/git-clone/0.1/git-clone.yaml
+            params:
+              - name: repository-url
+                value: $(tasks.test-metadata.results.source-repo-url)
+              - name: revision
+                value: $(tasks.test-metadata.results.git-revision)
+              - name: source-code-volume
+                value: sourcecode
+          - name: sealights-instrumentation
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/flacatus/tekton-integration-catalog
+                - name: revision
+                  value: sealights_build
+                - name: pathInRepo
+                  value: stepactions/sealights/sealights-go/0.1/sealights-go.yaml
+            params:
+              - name: go-version
+                value: "1.22"
+              - name: sealights-secret
+                value: "sealights-credentials"
+              - name: component
+                value: $(tasks.test-metadata.results.component-name)
+              - name: branch
+                value: $(tasks.test-metadata.results.source-repo-branch)
+              - name: revision
+                value: $(tasks.test-metadata.results.git-revision)
+              - name: source-code-volume
+                value: sourcecode
+          - name: create-trusted-artifact
+            image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:52f1391e6f1c472fd10bb838f64fae2ed3320c636f536014978a5ddbdfc6b3af
+            args:
+              - create
+              - --store
+              - $(steps.get-sealights-container.results.sealights-image).git
+              - $(results.SOURCE_ARTIFACT.path)=/source-code
+            volumeMounts:
+              - mountPath: /source-code
+                name: sourcecode
+    - name: konflux-e2e
+      runAfter:
+        - sealights-instrumentation
+      taskSpec:
+        volumes:
+          - name: sourcecode
+            emptyDir: {}
+        steps:
+          - name: use-trusted-artifact
+            image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:52f1391e6f1c472fd10bb838f64fae2ed3320c636f536014978a5ddbdfc6b3af
+            args:
+              - use
+              - $(tasks.sealights-instrumentation.results.SOURCE_ARTIFACT)=/source-code
+          - name: e2e-test
+            image: quay.io/flacatus/go-test-tools:latest
+            volumeMounts:
+              - name: sourcecode
+                mountPath: /source-code
+            workingDir: /workspace
+            env:
+              - name: JOB_SPEC
+                value: $(tasks.test-metadata.results.job-spec)
+            script: |
+              #!/bin/bash
+              set -euo pipefail
+              ls -larth /source-code
