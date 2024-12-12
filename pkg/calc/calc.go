@@ -4,7 +4,7 @@ import "fmt"
 
 func Add(a, b float64) float64 {
 	fmt.Println("Add", a, b)
-	fmt.Println("I think we neeed this for some reason 1111222 ")
+	fmt.Println("HELLO demo!")
 	return a + b
 }
 
