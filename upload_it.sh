@@ -8,6 +8,7 @@ export PORT=8080
 export DOMAIN="redhat.sealights.co"
 export SEALIGHTS_AGENT_TOKEN="${SEALIGHTS_AGENT_TOKEN:-""}"
 export KUBECONFIG="${KUBECONFIG:-""}"
+export BUILD_SESSION_ID="${BUILD_SESSION_ID:-""}"
 
 # Ensure the namespace exists
 echo "INFO: Ensuring namespace $NAMESPACE exists..."
@@ -34,9 +35,14 @@ spec:
       containers:
       - name: $DEPLOYMENT_NAME
         image: $IMAGE
+        env:
+          - name: SEALIGHTS_TOKEN
+            value: $SEALIGHTS_AGENT_TOKEN
         ports:
         - containerPort: $PORT
 EOF
+
+oc get deployment -n "$NAMESPACE" "$DEPLOYMENT_NAME" -o yaml
 
 # Check if Deployment was created
 echo "INFO: Verifying deployment status..."
@@ -68,14 +74,12 @@ echo "Application is accessible at: $CONTAINER_ROUTE_URL"
 # Install Ginkgo
 go install github.com/onsi/ginkgo/v2/ginkgo@latest
 
-exit 0
-
 # Create a Sealights test session
 echo "INFO: Creating Sealights test session..."
 TEST_SESSION_ID=$(curl -X POST "https://$DOMAIN/sl-api/v1/test-sessions" \
   -H "Authorization: Bearer $SEALIGHTS_AGENT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"labId":"","testStage":"go-calc-integration","bsid":"37fd56fc-13be-4a72-a139-ae28b9df5220","sessionTimeout":10000}' | jq -r '.data.testSessionId')
+  -d '{"labId":"","testStage":"go-calc-integration","bsid":"'${BUILD_SESSION_ID}'","sessionTimeout":10000}' | jq -r '.data.testSessionId')
 
 if [ -n "$TEST_SESSION_ID" ]; then
   echo "Test session ID: $TEST_SESSION_ID"
