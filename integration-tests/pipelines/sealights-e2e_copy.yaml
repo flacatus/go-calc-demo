@@ -197,6 +197,8 @@ spec:
               - name: credentials
                 value: credentials
           - name: e2e-test
+            runAfter:
+              - sealights-instrumentation
             image: quay.io/flacatus/go-test-tools:latest
             volumeMounts:
               - name: credentials
