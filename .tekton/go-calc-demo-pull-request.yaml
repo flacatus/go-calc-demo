@@ -172,6 +172,33 @@ spec:
         resolver: git
         params:
           - name: url
+            value: '{{ repo_url }}'
+          - name: revision
+            value: sealights_build
+          - name: pathInRepo
+            value: integration-tests/tasks/unit-tests.yaml
+      params:
+        - name: source-artifact
+          value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+        - name: go-version
+          value: "1.22"
+        - name: sealights-secret
+          value: "sealights-credentials"
+        - name: component
+          value: '{{ repo_name }}'
+        - name: branch
+          value: '{{ source_branch }}'
+        - name: revision
+          value: '{{ revision }}'
+        - name: oci-storage
+          value: $(params.output-image).sealights.git
+    - name: unit-tests-with-sealights
+      runAfter:
+        - sealights-instrumentation
+      taskRef:
+        resolver: git
+        params:
+          - name: url
             value: https://github.com/flacatus/tekton-integration-catalog.git
           - name: revision
             value: sealights_build
@@ -203,7 +230,7 @@ spec:
       - name: ociArtifactExpiresAfter
         value: $(params.image-expires-after)
       runAfter:
-      - sealights-instrumentation
+      - unit-tests-with-sealights
       taskRef:
         params:
         - name: name

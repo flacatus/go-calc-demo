@@ -7,9 +7,6 @@ WORKDIR go/src
 # Download dependencies
 RUN go mod download
 
-# Run tests
-RUN go test -v $(go list ./... | grep -v 'tests')
-
 # Build the Go application
 RUN go mod vendor
 
