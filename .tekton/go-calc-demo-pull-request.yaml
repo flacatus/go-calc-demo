@@ -201,9 +201,7 @@ spec:
           - name: url
             value: https://github.com/flacatus/go-calc-demo
           - name: revision
-            value: main
-          - name: k_comp
-            value: integration-tests/tasks/unit-tests.yaml
+            value: k_comp
           - name: pathInRepo
             value: integration-tests/tasks/unit-tests.yaml
       params:
