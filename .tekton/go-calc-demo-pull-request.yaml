@@ -176,7 +176,7 @@ spec:
           - name: revision
             value: sealights_build
           - name: pathInRepo
-            value: integration-tests/tasks/unit-tests.yaml
+            value: tasks/sealights/sealights-go-instrumentation/0.1/sealights-go-instrumentation.yaml
       params:
         - name: source-artifact
           value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
