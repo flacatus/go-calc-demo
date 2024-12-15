@@ -172,9 +172,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: '{{ repo_url }}'
+            value: https://github.com/flacatus/go-calc-demo.git
           - name: revision
-            value: sealights_build
+            value: '{{ source_branch }}'
           - name: pathInRepo
             value: integration-tests/tasks/unit-tests.yaml
       params:
