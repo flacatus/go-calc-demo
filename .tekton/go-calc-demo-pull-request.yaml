@@ -176,7 +176,7 @@ spec:
           - name: revision
             value: sealights_build
           - name: pathInRepo
-            value: tasks/sealights/sealights-go-instrumentation/0.1/sealights-go-instrumentation.yaml
+            value: tasks/sealights/sealights-go/0.1/sealights-go.yaml
       params:
         - name: source-artifact
           value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
@@ -192,7 +192,7 @@ spec:
           value: '{{ revision }}'
         - name: oci-storage
           value: $(params.output-image).sealights.git
-    - name: unit-tests-with-sealights
+    - name: sealights-unit-tests
       runAfter:
         - sealights-instrumentation
       taskRef:
@@ -207,18 +207,8 @@ spec:
       params:
         - name: source-artifact
           value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
-        - name: go-version
-          value: "1.22"
         - name: sealights-secret
           value: "sealights-credentials"
-        - name: component
-          value: '{{ repo_name }}'
-        - name: branch
-          value: '{{ source_branch }}'
-        - name: revision
-          value: '{{ revision }}'
-        - name: oci-storage
-          value: $(params.output-image).sealights.git
     - name: prefetch-dependencies
       params:
       - name: input
@@ -230,7 +220,7 @@ spec:
       - name: ociArtifactExpiresAfter
         value: $(params.image-expires-after)
       runAfter:
-      - unit-tests-with-sealights
+      - sealights-instrumentation
       taskRef:
         params:
         - name: name
