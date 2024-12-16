@@ -174,9 +174,9 @@ spec:
           - name: url
             value: https://github.com/flacatus/tekton-integration-catalog.git
           - name: revision
-            value: sealights_build
+            value: go-sealights
           - name: pathInRepo
-            value: tasks/sealights/sealights-go/0.1/sealights-go.yaml
+            value: tasks/sealights/sealights-go-instrumentation/0.1/sealights-go-instrumentation.yaml
       params:
         - name: source-artifact
           value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
