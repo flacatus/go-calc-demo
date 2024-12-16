@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/liornabat-sealights/go-calc-demo/lib/types"
-	"github.com/liornabat-sealights/go-calc-demo/service/pkg/calc"
-	"net/http"
-	"time"
+	"github.com/liornabat-sealights/go-calc-demo/pkg/calc"
 )
 
 type Server struct {
@@ -24,6 +25,7 @@ func (s *Server) Start(ctx context.Context) error {
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
+	fmt.Println("ABC")
 	e.GET("/add", func(c echo.Context) error {
 		return s.handelAdd(c)
 	})
@@ -58,11 +60,11 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 func (s *Server) handelAdd(c echo.Context) error {
-	a, b, err := s.parseParams(c)
+	ca, cb, err := s.parseParams(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, err.Error())
 	}
-	result := types.NewResultResponse().SetValues(a, b).SetResult(calc.Add(a, b))
+	result := types.NewResultResponse().SetValues(ca, cb).SetResult(calc.Add(ca, cb))
 	return c.JSON(http.StatusOK, result)
 }
 

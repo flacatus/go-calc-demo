@@ -4,7 +4,6 @@ go 1.22.0
 
 require (
 	github.com/go-resty/resty/v2 v2.13.1
-	github.com/liornabat-sealights/go-calc-demo/service v0.0.0-20230515080532-061b771da91e
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.0
 )

@@ -1,0 +1,28 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: sealights-instrumentation
+spec:
+  description: |
+    An integration test which provisions an ephemeral Hypershift cluster.
+  params:
+    - description: Snapshot of the application
+      name: SNAPSHOT
+      default: '{"components": [{"name":"test-app", "containerImage": "quay.io/example/repo:latest"}]}'
+      type: string
+  tasks:
+    - name: test-metadata
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/flacatus/tekton-integration-catalog.git
+          - name: revision
+            value: test_metadata_v3
+          - name: pathInRepo
+            value: common/tasks/test-metadata/0.3/test-metadata.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+        - name: test-name
+          value: $(context.pipelineRun.name)
