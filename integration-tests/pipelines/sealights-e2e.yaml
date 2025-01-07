@@ -138,15 +138,22 @@ spec:
                 value: $(tasks.sealights-refs.results.sealights-bsid)
               - name: KUBECONFIG
                 value: "/credentials/$(steps.get-kubeconfig.results.kubeconfig)"
+              - name: SOURCE_REPO_URL
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-repo-url']
+              - name: SOURCE_REPO_BRANCH
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-branch']
             script: |
               #!/bin/bash
               set -euo pipefail
-              oc get po -A
 
               export SEALIGHTS_AGENT_TOKEN="$(cat /usr/local/sealights-credentials/token)"
 
               cd "$(mktemp -d)"
-              git clone -b k_comp https://github.com/flacatus/go-calc-demo.git .
+              git clone -b "${SOURCE_REPO_BRANCH}" "${SOURCE_REPO_URL}" .
 
               # Execute the upload script
               UPLOAD_SCRIPT="${PWD}/upload_it.sh"

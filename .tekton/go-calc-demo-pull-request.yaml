@@ -190,6 +190,14 @@ spec:
           value: '{{ source_branch }}'
         - name: revision
           value: '{{ revision }}'
+        - name: repository-url
+          value: '{{ repo_url }}'
+        - name: test-event
+          value: '{{ event_type }}'
+        - name: pull-request-number
+          value: '{{ pull_request_number }}'
+        - name: target-branch
+          value: '{{ target_branch }}'
         - name: oci-storage
           value: $(params.output-image).sealights.git
     - name: sealights-unit-tests
