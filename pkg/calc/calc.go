@@ -3,8 +3,7 @@ package calc
 import "fmt"
 
 func Add(a, b float64) float64 {
-	fmt.Println("Add", a, b)
-	fmt.Println("HELLO demo from Konflux!")
+	fmt.Println("This is a test for a demo. Should run only add test.")
 	return a + b
 }
 
