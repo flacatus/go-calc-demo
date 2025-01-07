@@ -1,0 +1,167 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: sealights-instrumentation
+spec:
+  description: |
+    An integration test which provisions an ephemeral Hypershift cluster.
+  params:
+    - description: Snapshot of the application
+      name: SNAPSHOT
+      default: '{"components": [{"name":"test-app", "containerImage": "quay.io/example/repo:latest"}]}'
+      type: string
+  tasks:
+    - name: sealights-refs
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/sealights/sealights-get-refs/0.1/sealights-get-refs.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+    - name: provision-eaas-space
+      runAfter:
+        - sealights-refs
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/build-definitions.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: task/eaas-provision-space/0.1/eaas-provision-space.yaml
+      params:
+        - name: ownerName
+          value: $(context.pipelineRun.name)
+        - name: ownerUid
+          value: $(context.pipelineRun.uid)
+    - name: provision-cluster
+      runAfter:
+        - provision-eaas-space
+      taskSpec:
+        results:
+          - name: clusterName
+            value: "$(steps.create-cluster.results.clusterName)"
+        volumes:
+          - name: credentials
+            emptyDir: {}
+        steps:
+          - name: get-supported-versions
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/konflux-ci/build-definitions.git
+                - name: revision
+                  value: main
+                - name: pathInRepo
+                  value: stepactions/eaas-get-supported-ephemeral-cluster-versions/0.1/eaas-get-supported-ephemeral-cluster-versions.yaml
+            params:
+              - name: eaasSpaceSecretRef
+                value: $(tasks.provision-eaas-space.results.secretRef)
+          - name: pick-version
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/konflux-ci/build-definitions.git
+                - name: revision
+                  value: main
+                - name: pathInRepo
+                  value: stepactions/eaas-get-latest-openshift-version-by-prefix/0.1/eaas-get-latest-openshift-version-by-prefix.yaml
+            params:
+              - name: prefix
+                value: "4.15"
+          - name: create-cluster
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/konflux-ci/build-definitions.git
+                - name: revision
+                  value: main
+                - name: pathInRepo
+                  value: stepactions/eaas-create-ephemeral-cluster-hypershift-aws/0.1/eaas-create-ephemeral-cluster-hypershift-aws.yaml
+            params:
+              - name: eaasSpaceSecretRef
+                value: $(tasks.provision-eaas-space.results.secretRef)
+              - name: instanceType
+                value: m5.2xlarge
+              - name: version
+                value: "$(steps.pick-version.results.version)"
+    - name: konflux-e2e
+      runAfter:
+        - provision-cluster
+      taskSpec:
+        volumes:
+          - name: credentials
+            emptyDir: {}
+          - name: sealights-credentials
+            secret:
+              secretName: sealights-credentials
+        steps:
+          - name: get-kubeconfig
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/konflux-ci/build-definitions.git
+                - name: revision
+                  value: main
+                - name: pathInRepo
+                  value: stepactions/eaas-get-ephemeral-cluster-credentials/0.1/eaas-get-ephemeral-cluster-credentials.yaml
+            params:
+              - name: eaasSpaceSecretRef
+                value: $(tasks.provision-eaas-space.results.secretRef)
+              - name: clusterName
+                value: "$(tasks.provision-cluster.results.clusterName)"
+              - name: credentials
+                value: credentials
+          - name: e2e-test
+            image: quay.io/flacatus/go-test-tools:latest
+            volumeMounts:
+              - name: credentials
+                mountPath: /credentials
+              - name: sealights-credentials
+                mountPath: /usr/local/sealights-credentials
+            workingDir: /workspace
+            env:
+              - name: IMAGE
+                value: $(tasks.sealights-refs.results.sealights-container-image)
+              - name: BUILD_SESSION_ID
+                value: $(tasks.sealights-refs.results.sealights-bsid)
+              - name: KUBECONFIG
+                value: "/credentials/$(steps.get-kubeconfig.results.kubeconfig)"
+              - name: SOURCE_REPO_URL
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-repo-url']
+              - name: SOURCE_REPO_BRANCH
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-branch']
+            script: |
+              #!/bin/bash
+              set -euo pipefail
+
+              export SEALIGHTS_AGENT_TOKEN="$(cat /usr/local/sealights-credentials/token)"
+
+              cd "$(mktemp -d)"
+              git clone -b "${SOURCE_REPO_BRANCH}" "${SOURCE_REPO_URL}" .
+
+              # Execute the upload script
+              UPLOAD_SCRIPT="${PWD}/upload_it.sh"
+              if [[ -x "$UPLOAD_SCRIPT" ]]; then
+                echo "INFO: Running upload script: '$UPLOAD_SCRIPT'"
+                /bin/bash "$UPLOAD_SCRIPT"
+                echo "INFO: Upload script completed successfully."
+              else
+                echo "ERROR: Upload script '$UPLOAD_SCRIPT' not found or not executable."
+                exit 1
+              fi

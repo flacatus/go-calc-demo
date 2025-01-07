@@ -1,0 +1,42 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: unit-tests
+spec:
+  params:
+    - name: sealights-secret
+      type: string
+      description: "The name of the Openshift secret containing Sealights credentials."
+    - name: source-artifact
+      description: The Trusted Artifact URI pointing to the artifact with
+        the application source code.
+      type: string
+  steps:
+  volumes:
+    - name: sealights-credentials
+      secret:
+        secretName: sealights-credentials
+    - name: workdir
+      emptyDir: {}
+  stepTemplate:
+    volumeMounts:
+      - mountPath: /var/workdir
+        name: workdir
+      - name: sealights-credentials
+        mountPath: /usr/local/sealights-credentials
+    - name: use-trusted-artifact
+      image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:52f1391e6f1c472fd10bb838f64fae2ed3320c636f536014978a5ddbdfc6b3af
+      args:
+        - use
+        - $(params.source-artifact)=/var/workdir/source
+    - name: unit-tests
+      image: registry.access.redhat.com/ubi8/go-toolset:1.22.7
+      workingDir: /var/workdir/source
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        export SEALIGHTS_TOKEN="$(cat /usr/local/sealights-credentials/token)"
+
+        go test -v $(go list ./... | grep -v 'tests')
