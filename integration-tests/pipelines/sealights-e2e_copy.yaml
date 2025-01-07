@@ -87,9 +87,9 @@ spec:
           - name: url
             value: https://github.com/flacatus/tekton-integration-catalog.git
           - name: revision
-            value: sealights_build
+            value: go-sealights
           - name: pathInRepo
-            value: tasks/sealights/build-sealights-container/0.1/build-sealights-container.yaml
+            value: tasks/sealights/sealights-go-instrumentation/0.1/sealights-go-instrumentation.yaml
       params:
         - name: source-artifact
           value: $(tasks.sealights-instrumentation.results.source-artifact)
@@ -197,8 +197,6 @@ spec:
               - name: credentials
                 value: credentials
           - name: e2e-test
-            runAfter:
-              - sealights-instrumentation
             image: quay.io/flacatus/go-test-tools:latest
             volumeMounts:
               - name: credentials
