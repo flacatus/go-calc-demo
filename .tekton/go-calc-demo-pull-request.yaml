@@ -223,7 +223,7 @@ spec:
               - use
               - $(tasks.sealights-instrumentation.results.source-artifact)=/var/workdir/source
           - name: unit-tests
-            image: registry.access.redhat.com/ubi8/go-toolset:1.22.7
+            image: registry.access.redhat.com/ubi8/go-toolset:1.22.9-2
             securityContext:
               runAsUser: 0
             workingDir: /var/workdir/source
