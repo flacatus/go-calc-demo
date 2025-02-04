@@ -1,4 +1,4 @@
-FROM docker.io/library/golang:1.22.0-alpine as builder
+FROM docker.io/library/golang:1.23.5-alpine as builder
 
 # Add the source code
 COPY . go/src
