@@ -124,7 +124,7 @@ spec:
               - name: credentials
                 value: credentials
           - name: e2e-test
-            image: quay.io/flacatus/go-test-tools:latest
+            image: quay.io/konflux-ci/tekton-integration-catalog/sealights-go:latest
             volumeMounts:
               - name: credentials
                 mountPath: /credentials
@@ -151,17 +151,15 @@ spec:
               set -euo pipefail
 
               export SEALIGHTS_AGENT_TOKEN="$(cat /usr/local/sealights-credentials/token)"
+              export SEALIGHTS_TEST_STAGE="go-calc-plugin-e2e"
+              export SEALIGHTS_BUILD_SESSION_ID="${BUILD_SESSION_ID}"
 
               cd "$(mktemp -d)"
               git clone -b "${SOURCE_REPO_BRANCH}" "${SOURCE_REPO_URL}" .
 
-              # Execute the upload script
-              UPLOAD_SCRIPT="${PWD}/upload_it.sh"
-              if [[ -x "$UPLOAD_SCRIPT" ]]; then
-                echo "INFO: Running upload script: '$UPLOAD_SCRIPT'"
-                /bin/bash "$UPLOAD_SCRIPT"
-                echo "INFO: Upload script completed successfully."
-              else
-                echo "ERROR: Upload script '$UPLOAD_SCRIPT' not found or not executable."
-                exit 1
-              fi
+              slcli scan --tests-runner --enable-ginkgo --workspacepath "$(pwd)/tests/e2e" --path-to-scanner /usr/local/bin/slgoagent --scm none
+
+              # Install Ginkgo
+              go install github.com/onsi/ginkgo/v2/ginkgo@latest
+
+              cd tests/e2e && ginkgo --json-report=report.json

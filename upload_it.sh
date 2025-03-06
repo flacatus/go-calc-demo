@@ -10,6 +10,13 @@ export SEALIGHTS_AGENT_TOKEN="${SEALIGHTS_AGENT_TOKEN:-""}"
 export KUBECONFIG="${KUBECONFIG:-""}"
 export BUILD_SESSION_ID="${BUILD_SESSION_ID:-""}"
 
+
+
+
+
+
+
+
 # Ensure the namespace exists
 echo "INFO: Ensuring namespace $NAMESPACE exists..."
 oc get namespace "$NAMESPACE" >/dev/null 2>&1 || oc create namespace "$NAMESPACE"
