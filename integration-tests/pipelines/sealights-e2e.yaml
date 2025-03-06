@@ -159,6 +159,7 @@ spec:
 
               slcli scan --tests-runner --enable-ginkgo --workspacepath "$(pwd)/tests/e2e" --path-to-scanner /usr/local/bin/slgoagent --scm none
 
+              # TESTTTTTT
               # Execute the upload script
               UPLOAD_SCRIPT="${PWD}/upload_it_plugin.sh"
               if [[ -x "$UPLOAD_SCRIPT" ]]; then
