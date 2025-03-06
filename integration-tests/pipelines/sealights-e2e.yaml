@@ -159,5 +159,6 @@ spec:
 
               slcli scan --tests-runner --enable-ginkgo --workspacepath "$(pwd)/tests/e2e" --path-to-scanner /usr/local/bin/slgoagent --scm none
 
+              ls -larth
               chmod +x upload_it_plugin.sh
               /bin/bash ./upload_it_plugin.sh
