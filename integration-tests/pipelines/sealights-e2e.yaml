@@ -154,6 +154,7 @@ spec:
               export SEALIGHTS_TEST_STAGE="go-calc-plugin-e2e"
               export SEALIGHTS_BUILD_SESSION_ID="${BUILD_SESSION_ID}"
 
+              echo $SEALIGHTS_BUILD_SESSION_ID
               cd "$(mktemp -d)"
               git clone -b main "${SOURCE_REPO_URL}" .
 
