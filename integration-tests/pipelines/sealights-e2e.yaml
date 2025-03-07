@@ -157,6 +157,7 @@ spec:
               cd "$(mktemp -d)"
               git clone -b main "${SOURCE_REPO_URL}" .
 
+              slcli config init --lang go --token "${SEALIGHTS_AGENT_TOKEN}"
               slcli scan --tests-runner --enable-ginkgo --workspacepath "$(pwd)/tests/e2e" --path-to-scanner /usr/local/bin/slgoagent --scm none
 
               ls -larth
