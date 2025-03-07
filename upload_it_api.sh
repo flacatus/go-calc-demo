@@ -13,7 +13,7 @@ export BUILD_SESSION_ID="${BUILD_SESSION_ID:-""}"
 # Ensure the namespace exists
 echo "INFO: Ensuring namespace $NAMESPACE exists..."
 oc get namespace "$NAMESPACE" >/dev/null 2>&1 || oc create namespace "$NAMESPACE"
-
+#######TESSTSS
 # Create Deployment
 echo "INFO: Creating deployment..."
 oc apply -f - <<EOF
