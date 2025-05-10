@@ -163,66 +163,71 @@ spec:
       - name: basic-auth
         workspace: git-auth
     - name: sealights-instrumentation
-      runAfter:
-        - clone-repository
-      taskRef:
-        resolver: git
-        params:
-          - name: url
-            value: https://github.com/flacatus/tekton-integration-catalog.git
-          - name: revision
-            value: go-sealights
-          - name: pathInRepo
-            value: tasks/sealights/sealights-go-instrumentation/0.1/sealights-go-instrumentation.yaml
       params:
-        - name: source-artifact
-          value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
-        - name: go-version
-          value: "1.22"
-        - name: sealights-secret
-          value: "sealights-credentials"
-        - name: component
-          value: '{{ repo_name }}'
-        - name: branch
-          value: '{{ source_branch }}'
+      - name: source-artifact
+        value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+      - name: go-version
+        value: "1.22"
+      - name: sealights-secret
+        value: sealights-credentials
+      - name: component
+        value: '{{ repo_name }}'
+      - name: branch
+        value: '{{ source_branch }}'
+      - name: revision
+        value: '{{ revision }}'
+      - name: oci-storage
+        value: $(params.output-image).sealights.git
+      runAfter:
+      - clone-repository
+      taskRef:
+        params:
+        - name: url
+          value: https://github.com/flacatus/tekton-integration-catalog.git
         - name: revision
-          value: '{{ revision }}'
-        - name: oci-storage
-          value: $(params.output-image).sealights.git
+          value: go-sealights
+        - name: pathInRepo
+          value: tasks/sealights/sealights-go-instrumentation/0.1/sealights-go-instrumentation.yaml
+        resolver: git
     - name: sealights-unit-tests
       runAfter:
-        - sealights-instrumentation
+      - sealights-instrumentation
       taskSpec:
-        volumes:
-          - name: sealights-credentials
-            secret:
-              secretName: sealights-credentials
-          - name: workdir
-            emptyDir: {}
+        metadata: {}
+        spec: null
         stepTemplate:
+          computeResources: {}
           volumeMounts:
-            - mountPath: /var/workdir
-              name: workdir
-            - name: sealights-credentials
-              mountPath: /usr/local/sealights-credentials
+          - mountPath: /var/workdir
+            name: workdir
+          - mountPath: /usr/local/sealights-credentials
+            name: sealights-credentials
         steps:
-          - name: use-trusted-artifact
-            image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:52f1391e6f1c472fd10bb838f64fae2ed3320c636f536014978a5ddbdfc6b3af
-            args:
-              - use
-              - $(tasks.sealights-instrumentation.results.source-artifact)=/var/workdir/source
-          - name: unit-tests
-            image: registry.access.redhat.com/ubi8/go-toolset:1.22.7
-            securityContext:
-              runAsUser: 0
-            workingDir: /var/workdir/source
-            script: |
-              #!/bin/bash
-              set -euo pipefail
+        - args:
+          - use
+          - $(tasks.sealights-instrumentation.results.source-artifact)=/var/workdir/source
+          computeResources: {}
+          image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:52f1391e6f1c472fd10bb838f64fae2ed3320c636f536014978a5ddbdfc6b3af
+          name: use-trusted-artifact
+        - computeResources: {}
+          image: registry.access.redhat.com/ubi8/go-toolset:1.22.7
+          name: unit-tests
+          script: |
+            #!/bin/bash
+            set -euo pipefail
 
-              export SEALIGHTS_TOKEN="$(cat /usr/local/sealights-credentials/token)"
+            export SEALIGHTS_TOKEN="$(cat /usr/local/sealights-credentials/token)"
 
-              go test -v $(go list ./... | grep -v 'tests')
+            go test -v $(go list ./... | grep -v 'tests')
+          securityContext:
+            runAsUser: 0
+          workingDir: /var/workdir/source
+        volumes:
+        - name: sealights-credentials
+          secret:
+            secretName: sealights-credentials
+        - emptyDir: {}
+          name: workdir
     - name: prefetch-dependencies
       params:
       - name: input
@@ -524,7 +529,8 @@ spec:
       optional: true
     - name: netrc
       optional: true
-  taskRunTemplate: {}
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-go-calc-demo
   workspaces:
   - name: git-auth
     secret:
